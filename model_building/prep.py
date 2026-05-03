@@ -10,7 +10,7 @@ from sklearn.preprocessing import LabelEncoder
 from huggingface_hub import HfApi
 
 # Define constants for the dataset and output paths
-api = HfApi(token=os.getenv("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"))
+api = HfApi(token=os.getenv("HF_TOKEN"))
 DATASET_PATH = "hf://datasets/SRKiran/tourism_project_prediction/tourism.csv"
 df = pd.read_csv(DATASET_PATH, index_col=0)
 print("Dataset loaded successfully.")
