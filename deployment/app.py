@@ -89,6 +89,6 @@ if st.button("Predict Purchase Likelihood"):
 
     st.subheader("Prediction Result:")
     if prediction == 1:
-        st.success(f"✅ This customer is **likely to purchase** the Wellness Tourism Package. (Confidence: {probability:.1%})")
+        st.success(f"This customer is **likely to purchase** the Wellness Tourism Package. (Confidence: {probability:.1%})")
     else:
-        st.warning(f"❌ This customer is **unlikely to purchase** the Wellness Tourism Package. (Confidence: {1 - probability:.1%})")
+        st.warning(f"This customer is **unlikely to purchase** the Wellness Tourism Package. (Confidence: {1 - probability:.1%})")

@@ -6,7 +6,7 @@ from sklearn.pipeline import make_pipeline
 # for model training, tuning, and evaluation
 import xgboost as xgb
 from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 # for model serialization
 import joblib
 # for creating a folder
@@ -29,12 +29,12 @@ ytest_path = "hf://datasets/SRKiran/tourism_project_prediction/ytest.csv"
 
 Xtrain = pd.read_csv(Xtrain_path)
 Xtest = pd.read_csv(Xtest_path)
-ytrain = pd.read_csv(ytrain_path)
-ytest = pd.read_csv(ytest_path)
+ytrain = pd.read_csv(ytrain_path).squeeze()
+ytest = pd.read_csv(ytest_path).squeeze()
 
 
 # Define numeric and categorical features
-# Numeric features 
+# Numeric features
 numeric_features = [
     'Age', 'CityTier', 'DurationOfPitch',
     'NumberOfPersonVisiting', 'NumberOfFollowups',
@@ -43,7 +43,7 @@ numeric_features = [
     'OwnCar', 'NumberOfChildrenVisiting', 'MonthlyIncome'
 ]
 
-# Categorical features 
+# Categorical features
 categorical_features = [
     'TypeofContact', 'Occupation', 'Gender',
     'MaritalStatus', 'Designation', 'ProductPitched'
@@ -55,25 +55,25 @@ preprocessor = make_column_transformer(
     (OneHotEncoder(handle_unknown='ignore'), categorical_features)
 )
 
-# Define base XGBoost Regressor
-xgb_model = xgb.XGBRegressor(random_state=42, n_jobs=-1)
+# Define base XGBoost Classifier (binary classification: ProdTaken = 0 or 1)
+xgb_model = xgb.XGBClassifier(random_state=42, n_jobs=-1)
 
 # Hyperparameter grid
 param_grid = {
-    'xgbregressor__n_estimators': [50, 100, 150],
-    'xgbregressor__max_depth': [3, 5, 7],
-    'xgbregressor__learning_rate': [0.01, 0.05, 0.1],
-    'xgbregressor__subsample': [0.7, 0.8, 1.0],
-    'xgbregressor__colsample_bytree': [0.7, 0.8, 1.0],
-    'xgbregressor__reg_lambda': [0.1, 1, 10]
+    'xgbclassifier__n_estimators': [50, 100, 150],
+    'xgbclassifier__max_depth': [3, 5, 7],
+    'xgbclassifier__learning_rate': [0.01, 0.05, 0.1],
+    'xgbclassifier__subsample': [0.7, 0.8, 1.0],
+    'xgbclassifier__colsample_bytree': [0.7, 0.8, 1.0],
+    'xgbclassifier__reg_lambda': [0.1, 1, 10]
 }
 
 # Pipeline
 model_pipeline = make_pipeline(preprocessor, xgb_model)
 
 with mlflow.start_run():
-    # Grid Search
-    grid_search = GridSearchCV(model_pipeline, param_grid, cv=3, n_jobs=-1, scoring='neg_mean_squared_error')
+    # Grid Search with roc_auc scoring (appropriate for binary classification)
+    grid_search = GridSearchCV(model_pipeline, param_grid, cv=3, n_jobs=-1, scoring='roc_auc')
     grid_search.fit(Xtrain, ytrain)
 
     # Log parameter sets
@@ -84,7 +84,7 @@ with mlflow.start_run():
 
         with mlflow.start_run(nested=True):
             mlflow.log_params(param_set)
-            mlflow.log_metric("mean_neg_mse", mean_score)
+            mlflow.log_metric("mean_roc_auc", mean_score)
 
     # Best model
     mlflow.log_params(grid_search.best_params_)
@@ -93,25 +93,37 @@ with mlflow.start_run():
     # Predictions
     y_pred_train = best_model.predict(Xtrain)
     y_pred_test = best_model.predict(Xtest)
+    y_prob_train = best_model.predict_proba(Xtrain)[:, 1]
+    y_prob_test = best_model.predict_proba(Xtest)[:, 1]
 
-    # Metrics
-    train_rmse = mean_squared_error(ytrain, y_pred_train)
-    test_rmse = mean_squared_error(ytest, y_pred_test)
+    # Classification Metrics
+    train_accuracy  = accuracy_score(ytrain, y_pred_train)
+    test_accuracy   = accuracy_score(ytest, y_pred_test)
 
-    train_mae = mean_absolute_error(ytrain, y_pred_train)
-    test_mae = mean_absolute_error(ytest, y_pred_test)
+    train_precision = precision_score(ytrain, y_pred_train)
+    test_precision  = precision_score(ytest, y_pred_test)
 
-    train_r2 = r2_score(ytrain, y_pred_train)
-    test_r2 = r2_score(ytest, y_pred_test)
+    train_recall    = recall_score(ytrain, y_pred_train)
+    test_recall     = recall_score(ytest, y_pred_test)
+
+    train_f1        = f1_score(ytrain, y_pred_train)
+    test_f1         = f1_score(ytest, y_pred_test)
+
+    train_roc_auc   = roc_auc_score(ytrain, y_prob_train)
+    test_roc_auc    = roc_auc_score(ytest, y_prob_test)
 
     # Log metrics
     mlflow.log_metrics({
-        "train_RMSE": train_rmse,
-        "test_RMSE": test_rmse,
-        "train_MAE": train_mae,
-        "test_MAE": test_mae,
-        "train_R2": train_r2,
-        "test_R2": test_r2
+        "train_accuracy":  train_accuracy,
+        "test_accuracy":   test_accuracy,
+        "train_precision": train_precision,
+        "test_precision":  test_precision,
+        "train_recall":    train_recall,
+        "test_recall":     test_recall,
+        "train_f1":        train_f1,
+        "test_f1":         test_f1,
+        "train_roc_auc":   train_roc_auc,
+        "test_roc_auc":    test_roc_auc
     })
 
     # Save the model locally
@@ -135,7 +147,6 @@ with mlflow.start_run():
         create_repo(repo_id=repo_id, repo_type=repo_type, private=False)
         print(f"Space '{repo_id}' created.")
 
-    # create_repo("churn-model", repo_type="model", private=False)
     api.upload_file(
         path_or_fileobj="best_tourism_model_v1.joblib",
         path_in_repo="best_tourism_model_v1.joblib",
